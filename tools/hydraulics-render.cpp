@@ -141,6 +141,21 @@ int countPumps(const std::vector<float>& g, float depthDb)
     return count;
 }
 
+// Standardwert, den LMMS beim Einfügen der LADSPA-Version einstellt: DPF wählt eine LADSPA-Stufe
+// (DistrhoPluginLADSPA+DSSI.cpp), LMMS rechnet sie zurück (bei logarithmischen Reglern geometrisch).
+float ladspaDefault(const ParamInfo& p)
+{
+    const float a = p.min, b = p.max, d = p.def;
+    const bool log = p.flags & kFlagLog;
+    if (d == 0.0f || d == 1.0f || d == 100.0f || d == 440.0f || d == a || d == b)
+        return d;
+    if (d < 0.625f * a + 0.375f * b)
+        return log ? std::exp(0.75f * std::log(a) + 0.25f * std::log(b)) : 0.75f * a + 0.25f * b;
+    if (d > 0.375f * a + 0.625f * b)
+        return log ? std::exp(0.25f * std::log(a) + 0.75f * std::log(b)) : 0.25f * a + 0.75f * b;
+    return log ? std::sqrt(a * b) : 0.5f * (a + b);
+}
+
 int checkAll()
 {
     char buf[200];
@@ -255,6 +270,15 @@ int checkAll()
     expect("Depth 0: Ausgang bit-identisch mit dem Eingang (alle Quellen)", identical);
     expect("Stille bleibt Stille (alle Quellen, Depth 36 dB)", silent);
     expect("Kein NaN/Inf, keine Denormals (Depth 36 dB, Smooth 0,5 ms)", finite);
+
+    std::puts("== LMMS-LADSPA: Standardwerte beim Einfügen");
+    for (const ParamInfo& p : kParams) {
+        if (p.flags & kFlagOutput)
+            continue;
+        const float got = ladspaDefault(p);
+        std::snprintf(buf, sizeof(buf), "%s: LMMS stellt %g ein (Standard %g)", p.name, got, p.def);
+        expect(buf, std::fabs(got - p.def) <= 0.01f * (p.max - p.min));
+    }
 
     std::printf("%s\n", failed ? "NICHT BESTANDEN" : "BESTANDEN");
     return failed ? 1 : 0;

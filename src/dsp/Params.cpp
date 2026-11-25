@@ -7,17 +7,20 @@ static const char* const kRateNames[5] = { "1/1", "1/2", "1/4", "1/8", "1/16" };
 const float kRateBeats[5] = { 4, 2, 1, 0.5f, 0.25f };
 
 // clang-format off
+// Bereiche so gewählt, dass LMMS beim Einfügen der LADSPA-Version genau die Standardwerte einstellt:
+// LADSPA kennt nur grobe Standard-Stufen (Minimum, 25 %, Mitte, 75 %, Maximum), siehe ladspaDefault()
+// in tools/hydraulics-render.cpp. Deshalb sind die Regler linear und die Standards liegen auf diesen Stufen.
 const ParamInfo kParams[kParamCount] = {
     // name           symbol      unit   min     max     default  flags
     { "Source",       "source",   "",    0,      3,      0,       kFlagInt, kSourceNames },
     { "Trigger",      "trigger",  "",    0,      1,      0,       0 },
-    { "Depth",        "depth",    "dB",  0,      36,     12,      0 },
+    { "Depth",        "depth",    "dB",  0,      48,     12,      0 },
     { "Shape",        "shape",    "",    0,      1,      0.5f,    0 },
-    { "Length",       "length",   "ms",  20,     1000,   250,     kFlagLog },
+    { "Length",       "length",   "ms",  20,     480,    250,     0 },
     { "Rate",         "rate",     "",    0,      4,      2,       kFlagInt, kRateNames },
-    { "Smooth",       "smooth",   "ms",  0.5f,   20,     3,       kFlagLog },
+    { "Smooth",       "smooth",   "ms",  0.5f,   5.5f,   3,       0 },
     { "Phase",        "phase",    "",    0,      1,      0,       0 },
-    { "BPM",          "bpm",      "BPM", 60,     220,    160,     0 },
+    { "BPM",          "bpm",      "BPM", 100,    220,    160,     0 },
     { "Duck",         "duck",     "dB",  -40,    0,      0,       kFlagOutput },
 };
 
