@@ -17,13 +17,13 @@ In LMMS (LADSPA) gibt es nur die generischen Regler von LMMS.
 |---|---|---|---|
 | Source | Trigger / Host-Takt / BPM-Takt / MIDI | Trigger | Was das Pumpen auslöst (siehe unten) |
 | Trigger | 0 … 1 | 0 | Steigt der Wert über 0,5, pumpt es einmal; erst unter 0,3 wieder scharf. Hier wird der LMMS-Peak-Controller angeschlossen |
-| Depth | 0 … 36 dB | 12 dB | Wie tief geduckt wird; 0 = aus |
+| Depth | 0 … 48 dB | 12 dB | Wie tief geduckt wird; 0 = aus |
 | Shape | 0 … 100 % | 50 % | 0 = gleichmäßige Erholung, 100 = S-Kurve (bleibt länger unten, kommt dann schnell hoch) |
-| Length | 20 … 1000 ms | 250 ms | Wie lange die Erholung dauert. Bei 160 BPM und 1/4 bis ~350 ms, sonst ist sie vor dem nächsten Schlag nicht fertig |
+| Length | 20 … 480 ms | 250 ms | Wie lange die Erholung dauert. Bei 160 BPM und 1/4 bis ~350 ms, sonst ist sie vor dem nächsten Schlag nicht fertig |
 | Rate | 1/1 … 1/16 | 1/4 | Abstand der Pumps (nur Host-Takt und BPM-Takt) |
-| Smooth | 0,5 … 20 ms | 3 ms | Wie weich die Absenkung einsetzt (gegen Klicks) |
+| Smooth | 0,5 … 5,5 ms | 3 ms | Wie weich die Absenkung einsetzt (gegen Klicks) |
 | Phase | 0 … 100 % | 0 % | Verschiebt das Pumpen um einen Anteil der Rate (nur Takt-Quellen) |
-| BPM | 60 … 220 | 160 | Tempo für BPM-Takt bzw. wenn der Host kein Tempo liefert |
+| BPM | 100 … 220 | 160 | Tempo für BPM-Takt bzw. wenn der Host kein Tempo liefert |
 | Duck | Anzeige | | Aktuelle Absenkung in dB |
 
 ## Quellen

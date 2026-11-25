@@ -39,11 +39,12 @@ install: plugin
 	cp -R bin/offbeat-hydraulics.vst3 "$(VST3_DIR)/"
 	cp -R bin/offbeat-hydraulics.lv2 "$(LV2_DIR)/"
 	cp bin/$(LADSPA_FILE) "$(LADSPA_DIR)/$(LADSPA_FILE)"
-	cp bin/$(LADSPA_FILE) "$(LMMS_LADSPA_DIR)/$(LADSPA_FILE)"
+	rm -f "$(LMMS_LADSPA_DIR)/$(LADSPA_FILE)"  # alte Kopie mit falscher Endung
+	cp bin/$(LADSPA_FILE) "$(LMMS_LADSPA_DIR)/offbeat-hydraulics-ladspa.so"  # LMMS lädt nur *.so
 	codesign --force --deep -s - "$(VST3_DIR)/offbeat-hydraulics.vst3"
 	codesign --force -s - "$(LV2_DIR)/offbeat-hydraulics.lv2/offbeat-hydraulics.dylib"  # LV2-Ordner ist kein Bundle
 	codesign --force -s - "$(LADSPA_DIR)/$(LADSPA_FILE)"
-	codesign --force -s - "$(LMMS_LADSPA_DIR)/$(LADSPA_FILE)"
+	codesign --force -s - "$(LMMS_LADSPA_DIR)/offbeat-hydraulics-ladspa.so"
 
 clean:
 	rm -rf bin build
