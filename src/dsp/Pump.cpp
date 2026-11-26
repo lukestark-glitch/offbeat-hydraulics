@@ -1,9 +1,5 @@
 #include "Pump.hpp"
 
-#if defined(__SSE__) || defined(__x86_64__)
-#include <xmmintrin.h>
-#define OFFBEAT_HAVE_SSE 1
-#endif
 
 namespace offbeat {
 
@@ -57,10 +53,7 @@ float Pump::recovery(float x, float shape)
 
 void Pump::process(const float* inL, const float* inR, float* outL, float* outR, uint32_t frames)
 {
-#ifdef OFFBEAT_HAVE_SSE
-    const unsigned int oldCsr = _mm_getcsr();
-    _mm_setcsr(oldCsr | 0x8040); // Flush-to-Zero + Denormals-are-Zero
-#endif
+    const DenormalGuard denormals; // Flush-to-Zero für diesen Block (Intel und Apple Silicon)
     const int source = (int)params[kSource];
     const float duck = std::pow(10.0f, -params[kDepth] / 20.0f);
     const float shape = params[kShape];
@@ -115,9 +108,6 @@ void Pump::process(const float* inL, const float* inR, float* outL, float* outR,
         outR[i] = g * inR[i];
     }
     params[kDuck] = clampf(20.0f * std::log10(minGain + 1e-9f), -40.0f, 0.0f);
-#ifdef OFFBEAT_HAVE_SSE
-    _mm_setcsr(oldCsr);
-#endif
 }
 
 } // namespace offbeat
