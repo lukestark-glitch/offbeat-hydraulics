@@ -22,6 +22,10 @@ const ParamInfo kParams[kParamCount] = {
     { "Phase",        "phase",    "",    0,      1,      0,       0 },
     { "BPM",          "bpm",      "BPM", 100,    220,    160,     0 },
     { "Duck",         "duck",     "dB",  -40,    0,      0,       kFlagOutput },
+    { "Preview",      "preview",  "",    0,      15,     0,       kFlagInt | kFlagHidden },
+    { "Preview Loop", "preview_loop", "", 0,     1,      0,       kFlagBool | kFlagHidden },
+    { "Preview Bar",  "preview_bar", "",  0,     1,      0,       kFlagBool | kFlagHidden },
+    { "Preview Active", "preview_active", "", 0, 4,      0,       kFlagOutput | kFlagHidden },
 };
 
 namespace {
@@ -71,7 +75,7 @@ int jsonParams(const float[kParamCount], int* out)
     // alle einstellbaren Regler (ohne Anzeige-Werte)
     int n = 0;
     for (int p = 0; p < kParamCount; ++p)
-        if (!(kParams[p].flags & kFlagOutput))
+        if (!(kParams[p].flags & (kFlagOutput | kFlagHidden)))
             out[n++] = p;
     return n;
 }

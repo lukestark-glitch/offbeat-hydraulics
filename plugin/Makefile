@@ -9,7 +9,8 @@ FILES_DSP = \
 	HydraulicsPlugin.cpp \
 	../src/dsp/Pump.cpp \
 	../src/dsp/Params.cpp \
-	../src/dsp/ParamText.cpp
+	../src/dsp/ParamText.cpp \
+	../src/dsp/Preview.cpp
 
 DPF_PATH = ../dpf
 DPF_TARGET_DIR = ../bin
@@ -25,6 +26,17 @@ endif
 include ../dpf/Makefile.plugins.mk
 
 BUILD_CXX_FLAGS += -std=gnu++17 -I../src/dsp -I$(DPF_BUILD_DIR)
+
+# Versionsnummer für die Oberfläche (klein unter dem Logo), aus git describe beim Build
+OFFBEAT_VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+BUILD_CXX_FLAGS += -DOFFBEAT_VERSION='"$(OFFBEAT_VERSION)"'
+
+# Demo-Pad der Vorschau als C-Array einbetten
+$(DPF_BUILD_DIR)/DemoPad.h: ../assets/demo-pad.raw
+	-@mkdir -p $(DPF_BUILD_DIR)
+	cd ../assets && xxd -i demo-pad.raw > $(abspath $@)
+
+$(DPF_BUILD_DIR)/../src/dsp/Preview.cpp.o: $(DPF_BUILD_DIR)/DemoPad.h
 
 ifeq ($(LADSPA),1)
 BUILD_CXX_FLAGS += -DOFFBEAT_LADSPA

@@ -8,6 +8,10 @@
 #define DISTRHO_PLUGIN_URI     "https://github.com/lukestark-glitch/offbeat-hydraulics"
 #define DISTRHO_PLUGIN_CLAP_ID "com.github.lukestark-glitch.offbeat-hydraulics"
 
+// VST2 kennt keine Anzeige-Werte; DPF zeigt dort sonst nur Parameter vor dem ersten Anzeige-Wert, und
+// die Vorhör-Parameter (hinter „Duck“ angehängt) würden fehlen. So zeigt VST2 alle Parameter.
+#define DPF_VST_SHOW_PARAMETER_OUTPUTS 1
+
 #define DISTRHO_PLUGIN_BRAND_ID  Ofbt
 #define DISTRHO_PLUGIN_UNIQUE_ID OfbH
 
@@ -30,7 +34,7 @@
 #define DISTRHO_UI_USE_NANOVG           1
 #define DISTRHO_UI_USER_RESIZABLE       0
 #define DISTRHO_UI_DEFAULT_WIDTH        860
-#define DISTRHO_UI_DEFAULT_HEIGHT       512
+#define DISTRHO_UI_DEFAULT_HEIGHT       548
 #endif
 
 #define DISTRHO_PLUGIN_LV2_CATEGORY    "lv2:DynamicsPlugin"

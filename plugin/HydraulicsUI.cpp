@@ -3,6 +3,7 @@
 // Look und Bedienung: OffbeatKit.hpp (aus offbeat-engine).
 #include "OffbeatKit.hpp"
 #include "LowriderImage.h" // aus assets/lowrider.png erzeugt (xxd -i), siehe plugin/Makefile
+#include "Preview.hpp"
 #include "Pump.hpp"
 
 START_NAMESPACE_DISTRHO
@@ -13,8 +14,8 @@ using kit::kCellW;
 using kit::kLabelH;
 
 namespace {
-constexpr float kW = 860, kH = 400, kMargin = 20, kGridX = 31;
-constexpr float kPumpY = 104, kLowY = 252, kTaktW = 480;
+constexpr float kW = 860, kH = 548, kMargin = 20, kGridX = 31;
+constexpr float kPumpY = 104, kLowY = 252, kTaktW = 480, kPreviewY = 404;
 
 const int kPumpKnobs[4] = { kDepth, kShape, kLength, kSmooth };
 const int kTaktKnobs[4] = { kRate, kPhase, kBpm, kTrigger };
@@ -69,12 +70,43 @@ protected:
             knob(kTaktKnobs[i], kGridX + i * kCellW, kLowY + kLabelH, th.brand);
 
         drawCurve(kMargin + kTaktW + 12, kLowY, kW - 2 * kMargin - kTaktW - 12, kLabelH + kCellH, source);
+
+        // Vorschau: eingebautes Demo-Pad (mit Offbeat Engine erzeugt) ohne/mit Pumpen, Pump-Kurve darüber
+        drawPanel(kMargin, kPreviewY, kW - 2 * kMargin, kH - kPreviewY - 12, "VORSCHAU  \xc2\xb7  DEMO-PAD 160 BPM", th.brand);
+        drawPreview(kMargin + 14, kPreviewY + kLabelH + 2, kW - 2 * kMargin - 28, kH - kPreviewY - kLabelH - 26, th.brand);
     }
 
     void onButton(int id) override
     {
         if (id >= 100 && id < 100 + kSourceCount)
             setValue(kSource, (float)(id - 100), true);
+    }
+
+    PreviewParams previewParams() const override
+    {
+        PreviewParams pp;
+        pp.play = kPreview, pp.loop = kPreviewLoop, pp.bar = kPreviewBar, pp.active = kPreviewActive;
+        pp.allButton = false; // ohne und mit Pumpen gleichzeitig ergibt keinen Sinn
+        return pp;
+    }
+
+    // Ebenen: ohne (Demo-Pad) und mit Pumpen (Takt des Demos); die gefüllte Fläche zeigt „mit“,
+    // die helle Linie darüber ist die Pump-Kurve (oben = volle Lautstärke).
+    void renderPreview() override
+    {
+        const double beats = values[kPreviewBar] >= 0.5f ? 4.0 : 1.0;
+        static const char* const kNames[2] = { "Ohne", "Mit" };
+        std::vector<float> l, r;
+        previewLayers.resize(2);
+        for (int i = 0; i < 2; ++i) {
+            offbeat::renderPreview(values, i, beats, l, r);
+            previewLayers[i].name = kNames[i];
+            previewLayers[i].mono.resize(l.size());
+            for (size_t k = 0; k < l.size(); ++k)
+                previewLayers[i].mono[k] = 0.5f * (l[k] + r[k]);
+        }
+        previewSum = previewLayers[1].mono;
+        offbeat::renderPumpCurve(values, beats, previewCurve);
     }
 
     const char* controlLabel(int p) const override

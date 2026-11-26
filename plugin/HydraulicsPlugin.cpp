@@ -54,7 +54,7 @@ protected:
                               + tp.bbt.tick / tp.bbt.ticksPerBeat;
             pump.setTransport(true, tp.playing, beat, tp.bbt.beatsPerMinute);
         } else {
-            pump.setTransport(false, false, 0.0, 0.0);
+            pump.setTransport(false, tp.playing, 0.0, 0.0); // Play ohne Takt-Info beendet trotzdem das Vorhören
         }
 #else
         pump.setTransport(false, false, 0.0, 0.0);

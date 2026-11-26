@@ -7,7 +7,7 @@
 
 NAME = offbeat-hydraulics
 CXX ?= c++
-DSP_SRC = src/dsp/Pump.cpp src/dsp/Params.cpp src/dsp/ParamText.cpp
+DSP_SRC = src/dsp/Pump.cpp src/dsp/Params.cpp src/dsp/ParamText.cpp src/dsp/Preview.cpp
 DSP_HDR = $(wildcard src/dsp/*.hpp) tools/Measure.hpp
 PLUGINS_DIR = $(HOME)/Library/Audio/Plug-Ins
 # LMMS-LADSPA-Ordner aus ~/.lmmsrc.xml (Attribut laddir), sonst der LMMS-Standard
@@ -16,7 +16,9 @@ ifeq ($(LMMS_LADSPA_DIR),)
 LMMS_LADSPA_DIR = $(HOME)/Documents/lmms/plugins/ladspa/
 endif
 
-ifeq ($(shell uname -s),Darwin)
+# UNIVERSAL=false baut auf dem Mac nur für die eigene Architektur (z. B. schneller auf einem Intel-Mac).
+UNIVERSAL ?= true
+ifeq ($(shell uname -s)$(UNIVERSAL),Darwintrue)
 # Universal-Binary: läuft auf Intel- und Apple-Silicon-Macs. NOOPT: ohne x86-only-Flags (-mfpmath=sse).
 ARCH_FLAGS = -arch x86_64 -arch arm64 -mmacosx-version-min=10.15
 PLUGIN_ENV = CFLAGS="$(ARCH_FLAGS)" CXXFLAGS="$(ARCH_FLAGS)" LDFLAGS="$(ARCH_FLAGS)" NOOPT=true
@@ -35,12 +37,18 @@ standalone:
 
 render: bin/hydraulics-render
 
-bin/hydraulics-render: tools/hydraulics-render.cpp $(DSP_SRC) $(DSP_HDR)
+# Demo-Pad der Vorschau als C-Array (für Renderer; das Plugin erzeugt sich seine Kopie in plugin/Makefile)
+build/DemoPad.h: assets/demo-pad.raw
+	@mkdir -p build
+	cd assets && xxd -i demo-pad.raw > ../build/DemoPad.h
+
+bin/hydraulics-render: tools/hydraulics-render.cpp $(DSP_SRC) $(DSP_HDR) build/DemoPad.h
 	@mkdir -p bin
-	$(CXX) -std=gnu++17 -O2 -Wall -Wextra -Isrc/dsp -Itools tools/hydraulics-render.cpp $(DSP_SRC) -o $@
+	$(CXX) -std=gnu++17 -O2 -Wall -Wextra -Isrc/dsp -Itools -Ibuild tools/hydraulics-render.cpp $(DSP_SRC) -o $@
 
 check: render
 	bin/hydraulics-render --check-all
+	bin/hydraulics-render --preview-check
 
 install: plugin
 	rm -rf "$(PLUGINS_DIR)/VST3/$(NAME).vst3" "$(PLUGINS_DIR)/LV2/$(NAME).lv2" "$(PLUGINS_DIR)/VST/$(NAME).vst" \

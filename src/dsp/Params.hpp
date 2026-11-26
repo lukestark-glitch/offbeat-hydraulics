@@ -20,6 +20,12 @@ enum ParamId {
     kBpm,
     // Anzeige-Wert vom DSP an die Oberfläche
     kDuck,
+    // Vorhören des Demo-Pads aus der Oberfläche (versteckt, nicht automatisierbar). preview: Bit 0–2 =
+    // 1 ohne, 2 mit Pumpen, 0 Stopp; Bit 3 wechselt bei jedem Klick, damit jede Änderung auslöst.
+    kPreview,
+    kPreviewLoop,
+    kPreviewBar,    // Ausschnitt: aus = 1 Schlag, an = 1 Takt
+    kPreviewActive, // Anzeige: was gerade vorgehört wird (0 = nichts)
 
     kParamCount
 };

@@ -1,4 +1,7 @@
 #include "Pump.hpp"
+#include "Preview.hpp"
+
+#include <algorithm>
 
 
 namespace offbeat {
@@ -29,6 +32,12 @@ void Pump::setParam(int id, float value)
 
 void Pump::setTransport(bool valid, bool playing, double beatPosition, double hostBpm)
 {
+    // Play im Host beendet ein laufendes Vorhören: beim Abspielen klingt nur, was vom Host kommt.
+    if (playing && !transportRunning && previewActive) {
+        previewPending = 0;
+        previewFadeStep = -1.0f / (0.003f * sr);
+    }
+    transportRunning = playing;
     hostValid = valid && hostBpm > 0.0;
     hostPlaying = hostValid && playing;
     if (hostValid)
@@ -51,10 +60,10 @@ float Pump::recovery(float x, float shape)
     return x + shape * (s - x);
 }
 
-void Pump::process(const float* inL, const float* inR, float* outL, float* outR, uint32_t frames)
+void Pump::processChain(const float* inL, const float* inR, float* outL, float* outR, uint32_t frames)
 {
     const DenormalGuard denormals; // Flush-to-Zero für diesen Block (Intel und Apple Silicon)
-    const int source = (int)params[kSource];
+    const int source = previewClock ? (int)kSourceBpm : (int)params[kSource]; // Vorschau: eigener Takt
     const float duck = std::pow(10.0f, -params[kDepth] / 20.0f);
     const float shape = params[kShape];
     const float lengthSamples = params[kLength] * 0.001f * sr;
@@ -71,7 +80,7 @@ void Pump::process(const float* inL, const float* inR, float* outL, float* outR,
     }
 
     const bool clock = source == kSourceHost || source == kSourceBpm;
-    const double tempo = (source == kSourceHost && hostValid) ? bpm : (double)params[kBpm];
+    const double tempo = previewClock ? kDemoBpm : (source == kSourceHost && hostValid) ? bpm : (double)params[kBpm];
     const double rateBeats = kRateBeats[(int)params[kRate]];
     const double periodSamples = rateBeats * 60.0 / tempo * sr;
     if (clock)
@@ -108,6 +117,99 @@ void Pump::process(const float* inL, const float* inR, float* outL, float* outR,
         outR[i] = g * inR[i];
     }
     params[kDuck] = clampf(20.0f * std::log10(minGain + 1e-9f), -40.0f, 0.0f);
+}
+
+// ---- Vorhören ---------------------------------------------------------------------------------
+
+void Pump::setPreviewClock(bool on)
+{
+    previewClock = on;
+    beat = 0.0; // Pumpen genau auf den Schlägen des Demos
+}
+
+void Pump::startPreview(int code)
+{
+    previewActive = code;
+    previewPending = 0;
+    previewPos = 0;
+    previewLen = params[kPreviewBar] >= 0.5f ? kDemoFrames : kDemoBeat;
+    previewFade = 0.0f;
+    previewFadeStep = 1.0f / (0.003f * sr);
+    setPreviewClock(code == 2);
+    gain = startGain = 1.0f;
+}
+
+void Pump::updatePreview(const float* inL, const float* inR, uint32_t frames)
+{
+    const int request = (int)params[kPreview];
+    if (!previewSeen) { // Wert beim Laden eines Projekts: nur merken, nicht abspielen
+        previewSeen = true;
+        lastPreview = request;
+    } else if (request != lastPreview) {
+        lastPreview = request;
+        const int code = request & 7;
+        if (transportRunning && code != 0) {
+            // Host spielt: Vorhören startet nicht (auch nicht durch wiederhergestellte Parameter)
+        } else if (code == 1 || code == 2) {
+            if (previewActive) { // läuft schon: erst ausblenden, dann umschalten (kein Pegelsprung)
+                previewPending = code;
+                previewFadeStep = -1.0f / (0.003f * sr);
+            } else {
+                startPreview(code);
+            }
+        } else if (previewActive) {
+            previewPending = 0;
+            previewFadeStep = -1.0f / (0.003f * sr);
+        }
+    }
+    if (!previewActive)
+        return;
+    for (uint32_t i = 0; i < frames; ++i) // Host-Audio hat Vorrang
+        if (std::fabs(inL[i]) > 1e-4f || std::fabs(inR[i]) > 1e-4f) {
+            previewActive = 0;
+            setPreviewClock(false);
+            return;
+        }
+}
+
+void Pump::process(const float* inL, const float* inR, float* outL, float* outR, uint32_t frames)
+{
+    updatePreview(inL, inR, frames);
+    if (!previewActive) {
+        processChain(inL, inR, outL, outR, frames);
+        params[kPreviewActive] = 0.0f;
+        return;
+    }
+    for (uint32_t done = 0; done < frames;) { // Demo-Pad statt Eingang, in Stücken von 256
+        const uint32_t n = std::min<uint32_t>(256, frames - done);
+        for (uint32_t i = 0; i < n; ++i) {
+            const bool playing = previewPos < previewLen;
+            demoL[i] = playing ? demoSample(previewPos, 0) : 0.0f;
+            demoR[i] = playing ? demoSample(previewPos, 1) : 0.0f;
+            if (++previewPos >= previewLen && params[kPreviewLoop] >= 0.5f) {
+                previewPos = 0;
+                if (previewClock)
+                    beat = 0.0; // Takt mit dem Loop neu ausrichten
+            }
+        }
+        if (previewActive == 2)
+            processChain(demoL, demoR, outL + done, outR + done, n);
+        else
+            std::copy(demoL, demoL + n, outL + done), std::copy(demoR, demoR + n, outR + done);
+        for (uint32_t i = 0; i < n; ++i) {
+            previewFade = clampf(previewFade + previewFadeStep, 0.0f, 1.0f);
+            outL[done + i] *= previewFade;
+            outR[done + i] *= previewFade;
+        }
+        done += n;
+        if (previewPending && previewFade <= 0.0f)
+            startPreview(previewPending);
+    }
+    if ((previewFadeStep < 0.0f && previewFade <= 0.0f && !previewPending) || (params[kPreviewLoop] < 0.5f && previewPos >= previewLen)) {
+        previewActive = 0;
+        setPreviewClock(false);
+    }
+    params[kPreviewActive] = (float)previewActive;
 }
 
 } // namespace offbeat

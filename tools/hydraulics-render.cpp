@@ -6,6 +6,7 @@
 //   hydraulics-render --list
 #include "Measure.hpp"
 #include "ParamText.hpp"
+#include "Preview.hpp"
 #include "Pump.hpp"
 
 #include <cfloat>
@@ -284,11 +285,155 @@ int checkAll()
     return failed ? 1 : 0;
 }
 
+// Abnahme der Vorschau: renderPreview() (Oberfläche) ist bitgleich zu einer Pump mit Quelle BPM-Takt 160
+// auf dem Demo-Pad; die Pump-Kurve pumpt auf jedem Schlag; Vorhören über den Plugin-Ausgang knackst nicht
+// (Start, Wechsel ohne→mit, Stopp); Host-Audio hat Vorrang.
+int previewCheck()
+{
+    char buf[200];
+    std::puts("== Vorschau bitgleich zu Quelle BPM-Takt 160 (alle Presets, 1 Schlag und 1 Takt), Pump-Kurve");
+    int compared = 0, differing = 0, curveWrong = 0;
+    for (int p = 0; p < kPresetCount; ++p) {
+        float values[kParamCount];
+        applyPreset(p, values);
+        for (double beats : { 1.0, 4.0 }) {
+            std::vector<float> al, ar, curve;
+            renderPreview(values, 1, beats, al, ar);
+            std::vector<float> bl, br;
+            renderPreview(values, 0, beats, bl, br); // Demo-Ausschnitt
+            Pump ref;
+            ref.setSampleRate((float)kDemoRate);
+            for (int i = 0; i < kParamCount; ++i)
+                if (!(kParams[i].flags & (kFlagHidden | kFlagOutput)))
+                    ref.setParam(i, values[i]);
+            ref.setParam(kSource, kSourceBpm);
+            ref.setParam(kBpm, (float)kDemoBpm);
+            for (uint32_t pos = 0; pos < bl.size(); pos += 256) {
+                const uint32_t n = std::min<uint32_t>(256, (uint32_t)bl.size() - pos);
+                ref.process(&bl[pos], &br[pos], &bl[pos], &br[pos], n);
+            }
+            ++compared;
+            differing += (al == bl && ar == br) ? 0 : 1;
+            renderPumpCurve(values, beats, curve);
+            const float rate = kRateBeats[(int)values[kRate]];
+            const int want = (int)std::ceil(beats / rate - 1e-9);
+            curveWrong += countPumps(curve, values[kDepth]) == want ? 0 : 1;
+        }
+    }
+    std::snprintf(buf, sizeof(buf), "%d Vorschau-Renderings, davon %d nicht bitgleich", compared, differing);
+    expect(buf, differing == 0);
+    std::snprintf(buf, sizeof(buf), "Pump-Kurve pumpt im Takt des Demos (%d von %d falsch)", curveWrong, compared);
+    expect(buf, curveWrong == 0);
+
+    std::puts("== Vorhören über den Plugin-Ausgang (Standard-Preset, Loop): Start, Wechsel ohne→mit, Stopp, Host-Audio");
+    float values[kParamCount];
+    applyPreset(2, values);
+    // Bezug: größter Sprung im Klang beider Ebenen selbst (frisch gestartet, zwei Loop-Runden)
+    float maxStepSteady = 0.0f;
+    for (int layer : { 1, 2 }) {
+        Pump ref;
+        ref.setSampleRate((float)kDemoRate);
+        for (int i = 0; i < kParamCount; ++i)
+            ref.setParam(i, values[i]);
+        ref.setParam(kPreviewLoop, 1);
+        ref.setParam(kPreviewBar, 1);
+        std::vector<float> z(256, 0.0f), ol(2 * kDemoFrames + 512), orr(ol.size());
+        for (uint32_t pos = 0; pos + 256 <= ol.size(); pos += 256) {
+            if (pos == 256)
+                ref.setParam(kPreview, layer | 8);
+            ref.process(z.data(), z.data(), &ol[pos], &orr[pos], 256);
+        }
+        for (size_t i = 256 * 2; i < ol.size(); ++i)
+            maxStepSteady = std::fmax(maxStepSteady, std::fabs(ol[i] - ol[i - 1]));
+    }
+    Pump t;
+    t.setSampleRate((float)kDemoRate);
+    for (int i = 0; i < kParamCount; ++i)
+        t.setParam(i, values[i]);
+    t.setParam(kPreviewLoop, 1);
+    t.setParam(kPreviewBar, 1);
+    const uint32_t total = 4 * kDemoRate;
+    std::vector<float> host(256), l(total), r(total);
+    float maxStep = 0.0f;
+    bool played = false, hostWon = false;
+    for (uint32_t pos = 0; pos < total; pos += 256) {
+        if (pos == 256) t.setParam(kPreview, 1 | 8);       // ohne
+        if (pos == 256 * 200) t.setParam(kPreview, 2);     // Wechsel auf mit Pumpen
+        if (pos == 256 * 350) t.setParam(kPreview, 0 | 8); // Stopp
+        if (pos == 256 * 450) t.setParam(kPreview, 2 | 8); // wieder mit
+        const bool hostPlays = pos >= 256 * 650;
+        for (uint32_t i = 0; i < 256; ++i)
+            host[i] = hostPlays ? 0.1f * std::sin(2 * kPi * 220.0f * (pos + i) / kDemoRate) : 0.0f;
+        t.process(host.data(), host.data(), &l[pos], &r[pos], 256);
+        played |= t.getParam(kPreviewActive) == 2.0f;
+        if (hostPlays && pos > 256 * 652)
+            hostWon |= t.getParam(kPreviewActive) == 0.0f;
+        for (uint32_t i = pos + 1; i < pos + 256; ++i)
+            for (uint32_t at : { 256u, 256u * 200, 256u * 350, 256u * 450 })
+                if (i + kDemoRate / 100 > at && i < at + kDemoRate / 100)
+                    maxStep = std::fmax(maxStep, std::fabs(l[i] - l[i - 1]));
+    }
+    expect("Vorhören startet ohne Host-Audio", played);
+    {
+        // Play im Host (auch ohne Audio am Eingang): beendet das Vorhören, und solange er spielt, startet es nicht
+        Pump e;
+        e.setSampleRate((float)kDemoRate);
+        e.setParam(kPreviewLoop, 1);
+        std::vector<float> z(256, 0.0f), bl(256), br(256);
+        e.setTransport(true, false, 0.0, 160.0);
+        e.process(z.data(), z.data(), bl.data(), br.data(), 256);
+        e.setParam(kPreview, 2 | 8);
+        e.process(z.data(), z.data(), bl.data(), br.data(), 256);
+        const bool running = e.getParam(kPreviewActive) == 2.0f;
+        e.setTransport(true, true, 0.0, 160.0); // Play
+        for (int b = 0; b < 4; ++b)
+            e.process(z.data(), z.data(), bl.data(), br.data(), 256);
+        const bool stoppedByPlay = e.getParam(kPreviewActive) == 0.0f;
+        e.setParam(kPreview, 2);
+        e.process(z.data(), z.data(), bl.data(), br.data(), 256);
+        expect("Play im Host beendet das Vorhören", running && stoppedByPlay);
+        expect("Solange der Host spielt, startet kein Vorhören", e.getParam(kPreviewActive) == 0.0f);
+    }
+    expect("Host-Audio beendet das Vorhören", hostWon);
+    std::snprintf(buf, sizeof(buf), "Kein Knackser an Start/Wechsel/Stopp: größter Sprung %.4f ≤ im Klang der Ebenen selbst %.4f", maxStep, maxStepSteady);
+    expect(buf, maxStep <= maxStepSteady * 1.01f);
+    std::printf("%s\n", failed ? "NICHT BESTANDEN" : "BESTANDEN");
+    return failed ? 1 : 0;
+}
+
+// JSON für die LADSPA-Version in LMMS: LADSPA hat keine Oberfläche und kein EINFÜGEN. Darum zeigt dieses
+// Werkzeug zu einem JSON (z. B. aus KOPIEREN) die Werte, die man im LMMS-Effektfenster einstellt.
+int lmmsValues(const char* file)
+{
+    std::string json, errors;
+    if (FILE* f = std::fopen(file, "rb")) {
+        char b[4096];
+        for (size_t n; (n = std::fread(b, 1, sizeof(b), f)) > 0;)
+            json.append(b, n);
+        std::fclose(f);
+    }
+    float values[kParamCount];
+    applyDefaults(values);
+    bool changed[kParamCount] = {};
+    if (applyJson(json.c_str(), values, changed, errors) == 0) {
+        std::fprintf(stderr, "Kein gültiges JSON in %s\n", file);
+        return 2;
+    }
+    std::printf("In LMMS im Effektfenster von Offbeat Hydraulics (LADSPA) einstellen%s%s:\n", errors.empty() ? "" : " – ignoriert: ", errors.c_str());
+    for (int p = 0; p < kParamCount; ++p) {
+        const ParamInfo& i = kParams[p];
+        if (i.flags & (kFlagOutput | kFlagHidden))
+            continue;
+        std::printf("  %-12s %8g %-3s%s\n", i.name, values[p], i.unit, changed[p] ? "" : "  (Standard)");
+    }
+    return 0;
+}
+
 void usage()
 {
     std::puts("hydraulics-render --in datei.wav [--out datei.wav] [--preset NAME|NR] [--json datei] [--set symbol=wert]...\n"
               "                  [--bpm 160] [--kicks MS,MS,...]\n"
-              "hydraulics-render --check-all | --list");
+              "hydraulics-render --check-all | --preview-check | --lmms-values datei.json | --list");
 }
 
 } // namespace
@@ -304,6 +449,10 @@ int main(int argc, char** argv)
         const char* v = i + 1 < argc ? argv[i + 1] : nullptr;
         if (a == "--check-all")
             return checkAll();
+        if (a == "--preview-check")
+            return previewCheck();
+        if (a == "--lmms-values" && v)
+            return lmmsValues(v);
         if (a == "--preset-json" && v) { // Preset als JSON, genau wie KOPIEREN in der Oberfläche
             float vals[kParamCount];
             applyPreset(std::atoi(v), vals);
@@ -317,7 +466,7 @@ int main(int argc, char** argv)
                 std::printf("  %d  %s\n", p, kPresets[p].name);
             std::puts("Parameter (symbol: min..max, default):");
             for (const ParamInfo& p : kParams)
-                if (!(p.flags & kFlagOutput))
+                if (!(p.flags & (kFlagOutput | kFlagHidden)))
                     std::printf("  %-10s %g..%g %s, %g\n", p.symbol, p.min, p.max, p.unit, p.def);
             return 0;
         }
