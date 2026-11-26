@@ -39,6 +39,11 @@ $(DPF_BUILD_DIR)/HydraulicsUI.cpp.o: $(DPF_BUILD_DIR)/LowriderImage.h
 
 TARGETS += vst3
 TARGETS += lv2
+TARGETS += vst2
+TARGETS += clap
+ifeq ($(MACOS),true)
+TARGETS += au
+endif
 endif
 
 all: $(TARGETS)
